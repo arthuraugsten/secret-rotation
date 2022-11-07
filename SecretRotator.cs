@@ -9,7 +9,6 @@ internal static class SecretRotator
 {
     private const string CredentialIdTag = "CredentialId";
     private const string ProviderAddressTag = "ProviderAddress";
-    private const string ValidityPeriodDaysTag = "ValidityPeriodDays";
 
     public static void RotateSecret(string secretName, string keyVaultName)
     {
@@ -33,16 +32,14 @@ internal static class SecretRotator
 
     private static void CheckServiceConnection(KeyVaultSecret secret)
     {
-        var userId = "admin.lowcode";//secret.Properties.Tags.ContainsKey(CredentialIdTag) ? secret.Properties.Tags[CredentialIdTag] : string.Empty;
-        var dbResourceId = secret.Properties.Tags.ContainsKey(ProviderAddressTag) ? secret.Properties.Tags[ProviderAddressTag] : string.Empty;
-
-        var dbName = "eussqllowcoden01";//dbResourceId.Split('/')[8];
+        var userId = secret.Properties.Tags.ContainsKey(CredentialIdTag) ? secret.Properties.Tags[CredentialIdTag] : string.Empty;
+        var dbName = secret.Properties.Tags.ContainsKey(ProviderAddressTag) ? secret.Properties.Tags[ProviderAddressTag] : string.Empty;
 
         SqlConnectionStringBuilder builder = new()
         {
             DataSource = $"{dbName}.database.windows.net",
             UserID = userId,
-            Password = "1q2w3e4r%"//secret.Value
+            Password = secret.Value
         };
 
         using SqlConnection connection = new(builder.ConnectionString);
@@ -51,7 +48,12 @@ internal static class SecretRotator
 
     private static void CreateNewSecretVersion(SecretClient client, KeyVaultSecret secret, string newSecretValue)
     {
+        var credentialId = secret.Properties.Tags.ContainsKey(CredentialIdTag) ? secret.Properties.Tags[CredentialIdTag] : "";
+        var dbName = secret.Properties.Tags.ContainsKey(ProviderAddressTag) ? secret.Properties.Tags[ProviderAddressTag] : "";
+
         var newSecret = new KeyVaultSecret(secret.Name, newSecretValue);
+        newSecret.Properties.Tags.Add(CredentialIdTag, credentialId);
+        newSecret.Properties.Tags.Add(ProviderAddressTag, dbName);
         newSecret.Properties.ExpiresOn = DateTime.UtcNow.AddDays(60);
 
         client.SetSecret(newSecret);
@@ -60,16 +62,13 @@ internal static class SecretRotator
     private static void UpdateServicePassword(KeyVaultSecret secret, string newpassword)
     {
         var userId = secret.Properties.Tags.ContainsKey(CredentialIdTag) ? secret.Properties.Tags[CredentialIdTag] : string.Empty;
-        var dbResourceId = secret.Properties.Tags.ContainsKey(ProviderAddressTag) ? secret.Properties.Tags[ProviderAddressTag] : string.Empty;
-
-        var dbName = dbResourceId.Split('/')[8];
-        var password = secret.Value;
+        var dbName = secret.Properties.Tags.ContainsKey(ProviderAddressTag) ? secret.Properties.Tags[ProviderAddressTag] : string.Empty;
 
         SqlConnectionStringBuilder builder = new()
         {
             DataSource = $"{dbName}.database.windows.net",
             UserID = userId,
-            Password = password
+            Password = secret.Value
         };
 
         //Update password
@@ -85,8 +84,8 @@ internal static class SecretRotator
         const int length = 60;
 
         byte[] randomBytes = new byte[length];
-        RandomNumberGenerator.Create("random")?.GetBytes(randomBytes);
-        
+        RandomNumberGenerator.Create()?.GetBytes(randomBytes);
+
         return Convert.ToBase64String(randomBytes);
     }
 }
